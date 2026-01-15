@@ -1,0 +1,9 @@
+/build/
+/dist/
+/nbproject/private/
+/target/
+*.class
+*.log
+*.tmp
+src/main/resources/serviceAccountKey.json
+*.json
