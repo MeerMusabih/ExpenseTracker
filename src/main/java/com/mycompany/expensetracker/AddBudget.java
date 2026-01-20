@@ -17,7 +17,7 @@ import java.time.format.DateTimeFormatter;
  *
  * @author sirh9
  */
-public class AddBudget extends javax.swing.JFrame {
+public class AddBudget extends javax.swing.JDialog {
 
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(AddBudget.class.getName());
 
@@ -27,63 +27,42 @@ public class AddBudget extends javax.swing.JFrame {
     private boolean isEditMode = false;
     private String editCategory;
 
+    public AddBudget(java.awt.Frame parent, String userId, String userName) {
+        super(parent, true); // Modal dialog
+        this.currentUserId = userId;
+        this.currentUserName = userName;
+        this.monthYear = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM"));
+
+        initComponents();
+        addBudegtPanel.setSize(380, 280);
+        addBudegtPanel.setPreferredSize(new java.awt.Dimension(380, 280));
+        addBudegtPanel.setMinimumSize(new java.awt.Dimension(380, 280));
+        addBudegtPanel.setMaximumSize(new java.awt.Dimension(380, 280));
+
+        setLocationRelativeTo(parent);
+        applyThemeColors();
+
+        profileName.setText("Welcome, " + userName);
+        setupActionListeners();
+        setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
+    }
+
     /**
      * Creates new form AddBudget
      */
     public AddBudget(String userId, String userName) {
-        this.currentUserId = userId;
-        this.currentUserName = userName;
-        this.monthYear = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM"));
-
-        initComponents();
-        addBudegtPanel.setSize(380, 280);
-addBudegtPanel.setPreferredSize(new java.awt.Dimension(380, 280));
-addBudegtPanel.setMinimumSize(new java.awt.Dimension(380, 280));
-addBudegtPanel.setMaximumSize(new java.awt.Dimension(380, 280));
-
-
-        setLocationRelativeTo(null);
-        applyThemeColors();
-
-        profileName.setText("Welcome, " + userName);
-        setupActionListeners();
+        this(null, userId, userName);
     }
 
     // Constructor for edit mode
-    public AddBudget(String userId, String userName, String category, double targetAmount) {
-        this.currentUserId = userId;
-        this.currentUserName = userName;
-        this.monthYear = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM"));
-        this.isEditMode = true;
-        this.editCategory = category;
-
-        initComponents();
-        addBudegtPanel.setSize(380, 280);
-addBudegtPanel.setPreferredSize(new java.awt.Dimension(380, 280));
-addBudegtPanel.setMinimumSize(new java.awt.Dimension(380, 280));
-addBudegtPanel.setMaximumSize(new java.awt.Dimension(380, 280));
-
-
-        setLocationRelativeTo(null);
-        applyThemeColors();
-
-        profileName.setText("Welcome, " + userName);
-        heading.setText("Edit Budget");
-
-        nameText.setText(category);
-        nameText.setEnabled(false);
-        amountField.setText(String.valueOf(targetAmount));
-        addButton.setText("Update");
-
-        setupActionListeners();
-    }
-
+   
     public AddBudget() {
+        super((java.awt.Frame)null, true);
         initComponents();
         addBudegtPanel.setSize(380, 280);
-addBudegtPanel.setPreferredSize(new java.awt.Dimension(380, 280));
-addBudegtPanel.setMinimumSize(new java.awt.Dimension(380, 280));
-addBudegtPanel.setMaximumSize(new java.awt.Dimension(380, 280));
+        addBudegtPanel.setPreferredSize(new java.awt.Dimension(380, 280));
+        addBudegtPanel.setMinimumSize(new java.awt.Dimension(380, 280));
+        addBudegtPanel.setMaximumSize(new java.awt.Dimension(380, 280));
 
         
         setLocationRelativeTo(null);
@@ -111,14 +90,14 @@ addBudegtPanel.setMaximumSize(new java.awt.Dimension(380, 280));
     private void setupActionListeners() {
 
         addButton.addActionListener(e -> addBudget());
-        cancelButton.addActionListener(e -> navigateToScreen(new Budget(currentUserId, currentUserName)));
+        cancelButton.addActionListener(e -> this.dispose());
 
         addIncome.addActionListener(e -> navigateToScreen(new AddIncome(currentUserId, currentUserName)));
         addExpense.addActionListener(e -> navigateToScreen(new AddExpense(currentUserId, currentUserName)));
         transactions.addActionListener(e -> navigateToScreen(new Transactions(currentUserId, currentUserName)));
         monthlyReport.addActionListener(e -> navigateToScreen(new MonthlyReport(currentUserId, currentUserName)));
         charts.addActionListener(e -> navigateToScreen(new Charts(currentUserId, currentUserName)));
-        budget.addActionListener(e -> navigateToScreen(new Budget(currentUserId, currentUserName)));
+        budget.addActionListener(e -> this.dispose());
     }
 
     private void navigateToScreen(JFrame targetScreen) {
@@ -160,15 +139,31 @@ addBudegtPanel.setMaximumSize(new java.awt.Dimension(380, 280));
                 Firestore db = FirebaseService.getFirestore();
 
                 Map<String, Object> data = new HashMap<>();
+                // use snake_case keys to match queries used elsewhere
                 data.put("user_id", currentUserId);
                 data.put("category", category);
                 data.put("target_amount", amount);
                 data.put("month_year", monthYear);
 
-                // Composite ID ensures update if already present
-                String docId = currentUserId + "_" + monthYear + "_" + category.toLowerCase();
+                // Composite ID ensures update if already present. Normalize category to lower-case trimmed.
+                String docId = currentUserId + "_" + monthYear + "_" + category.trim().toLowerCase();
 
                 db.collection("budgets").document(docId).set(data).get();
+
+                // Persist category globally (categories collection) and add to runtime list so UI picks it up immediately
+                try {
+                    String catId = category.trim().toLowerCase().replaceAll("\\s+", "_");
+                    Map<String, Object> catData = new HashMap<>();
+                    catData.put("name", category.trim());
+                    catData.put("type", "Expense");
+                    db.collection("categories").document(catId).set(catData).get();
+                } catch (Exception ex) {
+                    // non-fatal: log but continue
+                    logger.log(Level.FINER, "Failed to persist category to Firestore", ex);
+                }
+
+                // update in-memory CategoryModel so Budget and AddExpense reflect it immediately
+                CategoryModel.addExpenseCategory(category);
                 return null;
             }
 
@@ -182,7 +177,7 @@ addBudegtPanel.setMaximumSize(new java.awt.Dimension(380, 280));
                             "Success",
                             JOptionPane.INFORMATION_MESSAGE
                     );
-                    navigateToScreen(new Budget(currentUserId, currentUserName));
+                    AddBudget.this.dispose();
                 } catch (Exception ex) {
                     logger.log(Level.SEVERE, "Error saving budget.", ex);
                     JOptionPane.showMessageDialog(
@@ -221,8 +216,9 @@ addBudegtPanel.setMaximumSize(new java.awt.Dimension(380, 280));
         charts = new javax.swing.JButton();
         budget = new javax.swing.JButton();
         targetText = new javax.swing.JLabel();
+        bgImage = new javax.swing.JLabel();
 
-        setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
+        setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
         getContentPane().setLayout(new org.netbeans.lib.awtextra.AbsoluteLayout());
 
         profileName.setFont(new java.awt.Font("Times New Roman", 1, 12)); // NOI18N
@@ -255,8 +251,13 @@ addBudegtPanel.setMaximumSize(new java.awt.Dimension(380, 280));
             .addGroup(addBudegtPanelLayout.createSequentialGroup()
                 .addGap(28, 28, 28)
                 .addGroup(addBudegtPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(heading)
                     .addComponent(nameText, javax.swing.GroupLayout.PREFERRED_SIZE, 362, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(amountField, javax.swing.GroupLayout.PREFERRED_SIZE, 362, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(amountField, javax.swing.GroupLayout.PREFERRED_SIZE, 362, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addGroup(addBudegtPanelLayout.createSequentialGroup()
+                        .addComponent(addButton)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(cancelButton)))
                 .addContainerGap())
         );
         addBudegtPanelLayout.setVerticalGroup(
@@ -277,7 +278,11 @@ addBudegtPanel.setMaximumSize(new java.awt.Dimension(380, 280));
 
         getContentPane().add(addBudegtPanel, new org.netbeans.lib.awtextra.AbsoluteConstraints(200, 80, 380, 280));
 
+        bgImage.setIcon(new javax.swing.ImageIcon("C:\\Users\\sirh9\\Downloads\\nasa waly bohot khatarnak hn.png")); // NOI18N
+        getContentPane().add(bgImage, new org.netbeans.lib.awtextra.AbsoluteConstraints(-320, -80, 1015, 670));
+
         pack();
+        setSize(600, 450);
     }// </editor-fold>//GEN-END:initComponents
 
     public static void main(String args[]) {
@@ -290,6 +295,7 @@ addBudegtPanel.setMaximumSize(new java.awt.Dimension(380, 280));
     private javax.swing.JButton addExpense;
     private javax.swing.JButton addIncome;
     private javax.swing.JTextField amountField;
+    private javax.swing.JLabel bgImage;
     private javax.swing.JButton budget;
     private javax.swing.JButton cancelButton;
     private javax.swing.JButton charts;
