@@ -229,6 +229,7 @@ public class AddExpense extends javax.swing.JFrame {
         
         // Check available balance before allowing expense
         saveButton.setEnabled(false); // Prevent double clicks
+        LoadingDialog.showLoading(this, "Checking balance...");
         
         SwingWorker<Boolean, Void> balanceChecker = new SwingWorker<Boolean, Void>() {
             @Override
@@ -271,9 +272,11 @@ public class AddExpense extends javax.swing.JFrame {
                         saveButton.setEnabled(true);
                     } else {
                         // Proceed with expense insertion
+                        LoadingDialog.hideLoading();
                         proceedWithExpenseInsertion(amount, finalCategory, finalTransactionDate, finalDescription);
                     }
                 } catch (Exception ex) {
+                    LoadingDialog.hideLoading();
                     logger.log(Level.SEVERE, "Error checking balance", ex);
                     saveButton.setEnabled(true);
                     JOptionPane.showMessageDialog(AddExpense.this,
@@ -288,6 +291,7 @@ public class AddExpense extends javax.swing.JFrame {
     
     
     private void proceedWithExpenseInsertion(double amount, String category, Date transactionDate, String finalDescription) {
+        LoadingDialog.showLoading(this, "Saving expense...");
         SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() throws Exception {
@@ -325,6 +329,7 @@ public class AddExpense extends javax.swing.JFrame {
                     JOptionPane.showMessageDialog(AddExpense.this, "Database error: " + ex.getMessage(), "DB Error", JOptionPane.ERROR_MESSAGE);
                     logger.log(Level.SEVERE, "Expense insert error", ex);
                 } finally {
+                    LoadingDialog.hideLoading();
                     saveButton.setEnabled(true);
                 }
             }
@@ -400,7 +405,7 @@ public class AddExpense extends javax.swing.JFrame {
         });
 
         categoryMenu.setEditable(true);
-        categoryMenu.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Salary", "Business", "Gift", "Others" }));
+        categoryMenu.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] {  }));
         categoryMenu.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 categoryMenuActionPerformed(evt);

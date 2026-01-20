@@ -28,6 +28,7 @@ public class Transactions extends javax.swing.JFrame {
     private String currentUserId;
     private String currentUserName; 
     private DefaultTableModel tableModel;
+    private SwingWorker<?, ?> currentWorker;
 
     // Card Components
     private javax.swing.JPanel cardsPanel;
@@ -194,7 +195,8 @@ public class Transactions extends javax.swing.JFrame {
             filterMenu.addItem(c);
         }
         
-        filterMenu.addActionListener(this::filterMenuActionPerformed);
+        // Redundant listener removed - already handled in initComponents
+        // filterMenu.addActionListener(this::filterMenuActionPerformed);
     }
 
     private void setupInputPlaceholders() {
@@ -322,13 +324,15 @@ public class Transactions extends javax.swing.JFrame {
 
 
     private void loadTransactions(String searchTerm, String filterBy) {
+        if (currentWorker != null && !currentWorker.isDone()) {
+            currentWorker.cancel(true);
+        }
         
         if (tableModel == null) {
             tableModel = (DefaultTableModel) transactionTable.getModel();
         }
         
-        tableModel.setRowCount(0); 
-        
+        LoadingDialog.showLoading(this, "Loading transactions...");
         // SwingWorker for background loading
         SwingWorker<List<QueryDocumentSnapshot>, Void> worker = new SwingWorker<List<QueryDocumentSnapshot>, Void>() {
             @Override
@@ -343,7 +347,9 @@ public class Transactions extends javax.swing.JFrame {
 
             @Override
             protected void done() {
+                if (isCancelled()) return;
                 try {
+                    tableModel.setRowCount(0); 
                     List<QueryDocumentSnapshot> documents = get();
                     List<TransactionModel> txList = new ArrayList<>();
                     
@@ -442,9 +448,12 @@ public class Transactions extends javax.swing.JFrame {
                 } catch (Exception ex) {
                     logger.log(Level.SEVERE, "Error fetching transactions.", ex);
                      JOptionPane.showMessageDialog(Transactions.this, "Error loading transactions: " + ex.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
+                } finally {
+                    LoadingDialog.hideLoading();
                 }
             }
         };
+        currentWorker = worker;
         worker.execute();
     }
     
@@ -515,7 +524,7 @@ public class Transactions extends javax.swing.JFrame {
         });
 
         filterMenu.setEditable(true);
-        filterMenu.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Salary", "Business", "Gift", "Others" }));
+        filterMenu.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] {  }));
         filterMenu.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 filterMenuActionPerformed(evt);

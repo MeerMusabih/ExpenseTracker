@@ -1,11 +1,17 @@
 package com.mycompany.expensetracker;
 
+import com.google.api.core.ApiFuture;
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
 
 public class CategoryModel {
+    private static final Logger logger = Logger.getLogger(CategoryModel.class.getName());
     private String name;
-    private String type; // "Income" or "Expense" (or "Both" if applicable)
+    private String type; // "Income" or "Expense"
 
     public CategoryModel() {
     }
@@ -31,63 +37,81 @@ public class CategoryModel {
         this.type = type;
     }
 
-    // Static source of truth
-    public static List<CategoryModel> getExpenseCategories() {
-        List<CategoryModel> list = new ArrayList<>();
-        String[] categories = {
-            "Groceries", "Rent", "Utilities", "Transportation", "Entertainment",
-            "Health", "Shopping", "Dining Out", "Education", "Travel", "Others"
-        };
-        for (String c : categories) {
-            list.add(new CategoryModel(c, "Expense"));
+    // In-memory cache
+    private static final List<CategoryModel> categories = new ArrayList<>();
+
+    /**
+     * Loads categories from Firestore. If the collection is empty, seeds it with defaults.
+     */
+    public static synchronized void loadFromFirestore(Firestore db) throws Exception {
+        ApiFuture<QuerySnapshot> future = db.collection("categories").get();
+        List<QueryDocumentSnapshot> documents = future.get().getDocuments();
+
+        if (documents.isEmpty()) {
+            logger.warning("No categories found in Firestore 'categories' collection.");
         }
-        return list;
+
+        categories.clear();
+        for (QueryDocumentSnapshot doc : documents) {
+            String name = doc.getString("name");
+            String type = doc.getString("type");
+            if (name != null && type != null) {
+                categories.add(new CategoryModel(name, type));
+            }
+        }
+        logger.info("Loaded " + categories.size() + " categories from Firestore.");
     }
-    
-    public static List<CategoryModel> getIncomeCategories() {
+
+    public static synchronized List<CategoryModel> getExpenseCategories() {
         List<CategoryModel> list = new ArrayList<>();
-        String[] categories = {
-            "Salary", "Business", "Gift", "Others"
-        };
-        for (String c : categories) {
-            list.add(new CategoryModel(c, "Income"));
+        for (CategoryModel c : categories) {
+            if ("Expense".equalsIgnoreCase(c.getType())) {
+                list.add(c);
+            }
         }
         return list;
     }
 
-    public static List<CategoryModel> getAllCategories() {
+    public static synchronized List<CategoryModel> getIncomeCategories() {
         List<CategoryModel> list = new ArrayList<>();
-        list.addAll(getIncomeCategories());
-        // Avoid duplicates if "Others" is in both, but technically they are distinct types
-        // However for a filter list "All", we might want just unique names or allow both.
-        // Transactions.java filter list currently mixes them.
-        
-        // Let's add Expense categories that aren't already added (just in case of name collision, though Types differ)
-        for (CategoryModel c : getExpenseCategories()) {
-             // specific logic if needed, for now just add all
-             list.add(c);
+        for (CategoryModel c : categories) {
+            if ("Income".equalsIgnoreCase(c.getType())) {
+                list.add(c);
+            }
         }
         return list;
     }
-    
-    /**
-     * Returns a list of unique category names for filtering purposes.
-     */
+
+    public static synchronized void addCategoryLocal(String name, String type) {
+        if (name == null || type == null) return;
+        String norm = name.trim();
+        if (norm.isEmpty()) return;
+        for (CategoryModel c : categories) {
+            if (c.getName().equalsIgnoreCase(norm) && c.getType().equalsIgnoreCase(type)) return;
+        }
+        categories.add(new CategoryModel(norm, type));
+    }
+
+    public static void addExpenseCategory(String name) {
+        addCategoryLocal(name, "Expense");
+    }
+
+    public static void addIncomeCategory(String name) {
+        addCategoryLocal(name, "Income");
+    }
+
     public static List<String> getAllCategoryNames() {
         List<String> names = new ArrayList<>();
-        // Add Income categories
-        for (CategoryModel c : getIncomeCategories()) {
-            if (!names.contains(c.getName())) names.add(c.getName());
-        }
-        // Add Expense categories
-        for (CategoryModel c : getExpenseCategories()) {
-            if (!names.contains(c.getName())) names.add(c.getName());
+        for (CategoryModel c : categories) {
+            if (!names.contains(c.getName())) {
+                names.add(c.getName());
+            }
         }
         return names;
     }
 
     @Override
     public String toString() {
-        return name; // Useful for JComboBox
+        return name;
     }
 }

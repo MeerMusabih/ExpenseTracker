@@ -189,6 +189,7 @@ public class Login extends javax.swing.JFrame {
             return;
         }
 
+        LoadingDialog.showLoading(this, "Logging in...");
         SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() throws Exception {
@@ -204,7 +205,8 @@ public class Login extends javax.swing.JFrame {
                     }
                     
                     if (BCrypt.checkpw(password, storedHash)) {
-                         // Login Success
+                         // Login Success - Load categories
+                         CategoryModel.loadFromFirestore(db);
                     } else {
                         throw new Exception("Invalid username or password.");
                     }
@@ -230,6 +232,8 @@ public class Login extends javax.swing.JFrame {
                      }
                 } catch (InterruptedException ex) {
                     logger.log(java.util.logging.Level.SEVERE, "Login interrupted", ex);
+                } finally {
+                    LoadingDialog.hideLoading();
                 }
             }
         };

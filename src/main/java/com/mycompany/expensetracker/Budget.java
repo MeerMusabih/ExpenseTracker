@@ -30,6 +30,7 @@ public class Budget extends javax.swing.JFrame {
     private final YearMonth currentMonth = YearMonth.now();
     private final DateTimeFormatter monthFormatter = DateTimeFormatter.ofPattern("MMM yyyy");
     private final String currentMonthYear = currentMonth.format(DateTimeFormatter.ofPattern("yyyy-MM"));
+    private SwingWorker<?, ?> currentWorker;
     
     /**
      * Creates new form Budget
@@ -101,7 +102,7 @@ public class Budget extends javax.swing.JFrame {
         monthlyReport.addActionListener(e -> navigateToScreen(new MonthlyReport(currentUserId, currentUserName))); 
         charts.addActionListener(e -> navigateToScreen(new Charts(currentUserId, currentUserName))); 
         budget.addActionListener(e -> {});
-        addBudgetButton.addActionListener(e -> navigateToScreen(new AddBudget(currentUserId,currentUserName)));
+       
     }
 
     private void navigateToHome() {
@@ -115,8 +116,9 @@ public class Budget extends javax.swing.JFrame {
     }
     
     private void editBudget(String category, double targetAmount) {
-        this.dispose();
-        new AddBudget(currentUserId, currentUserName, category, targetAmount).setVisible(true);
+        AddBudget dialog = new AddBudget(this, currentUserId, currentUserName);
+        dialog.setVisible(true);
+        loadBudgets(); // Refresh after dialog closes
     }
     
     private void deleteBudget(String category) {
@@ -129,11 +131,12 @@ public class Budget extends javax.swing.JFrame {
         );
         
         if (confirm == JOptionPane.YES_OPTION) {
+            LoadingDialog.showLoading(this, "Deleting budget...");
             SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
                 @Override
                 protected Void doInBackground() throws Exception {
                     Firestore db = FirebaseService.getFirestore();
-                    String docId = currentUserId + "_" + currentMonthYear + "_" + category;
+                    String docId = currentUserId + "_" + currentMonthYear + "_" + category.trim().toLowerCase();
                     db.collection("budgets").document(docId).delete().get();
                     return null;
                 }
@@ -153,6 +156,8 @@ public class Budget extends javax.swing.JFrame {
                             "Error deleting budget: " + ex.getMessage(),
                             "Error",
                             JOptionPane.ERROR_MESSAGE);
+                    } finally {
+                        LoadingDialog.hideLoading();
                     }
                 }
             };
@@ -161,56 +166,95 @@ public class Budget extends javax.swing.JFrame {
     }
     
     private void loadBudgets() {
-        budgetCards.removeAll();
+        if (currentWorker != null && !currentWorker.isDone()) {
+            currentWorker.cancel(true);
+        }
+        
         if (currentUserId == null) return;
 
+        budgetCards.removeAll();
+        budgetCards.revalidate();
+        budgetCards.repaint();
+
+        LoadingDialog.showLoading(this, "Loading budgets...");
         SwingWorker<Void, JPanel> worker = new SwingWorker<Void, JPanel>() {
+  
             @Override
             protected Void doInBackground() throws Exception {
                 Firestore db = FirebaseService.getFirestore();
                 
-                // 1. Fetch Budgets
-                ApiFuture<QuerySnapshot> budgetFuture = db.collection("budgets")
+                // 1. Fetch Budgets (try snake_case then camelCase for compatibility)
+                List<QueryDocumentSnapshot> budgetDocs = db.collection("budgets")
                         .whereEqualTo("user_id", currentUserId)
                         .whereEqualTo("month_year", currentMonthYear)
-                        .get();
-                List<QueryDocumentSnapshot> budgetDocs = budgetFuture.get().getDocuments();
-                
+                        .get().get().getDocuments();
+
+                if (budgetDocs == null || budgetDocs.isEmpty()) {
+                    budgetDocs = db.collection("budgets")
+                            .whereEqualTo("userId", currentUserId)
+                            .whereEqualTo("month_year", currentMonthYear)
+                            .get().get().getDocuments();
+                }
+
                 Map<String, Double> budgetTargets = new HashMap<>();
+                logger.info("Fetched budgets: " + (budgetDocs == null ? 0 : budgetDocs.size()));
                 for (QueryDocumentSnapshot doc : budgetDocs) {
-                    budgetTargets.put(doc.getString("category"), doc.getDouble("target_amount"));
+                    String cat = doc.contains("category") ? doc.getString("category") : doc.getString("Category");
+                    Object tgtObj = doc.get("target_amount");
+                    if (tgtObj == null) tgtObj = doc.get("targetAmount");
+                    double tgt = 0.0;
+                    if (tgtObj instanceof Number) tgt = ((Number) tgtObj).doubleValue();
+                    if (cat != null) {
+                        String norm = cat.trim().toLowerCase();
+                        budgetTargets.put(norm, tgt);
+                        logger.fine("Budget doc: id=" + doc.getId() + " category=" + cat + " norm=" + norm + " target=" + tgt);
+                    } else {
+                        logger.warning("Budget doc missing category: " + doc.getId());
+                    }
                 }
                 
                 // 2. Fetch Transactions for Spending
-                ApiFuture<QuerySnapshot> transFuture = db.collection("transactions")
-                        .whereEqualTo("user_id", currentUserId)
-                        .get();
-                List<QueryDocumentSnapshot> transDocs = transFuture.get().getDocuments();
+                // 2. Fetch Transactions for Spending (try both field name variants)
+                List<QueryDocumentSnapshot> transDocs = db.collection("transactions")
+                    .whereEqualTo("user_id", currentUserId)
+                    .get().get().getDocuments();
+
+                if (transDocs == null || transDocs.isEmpty()) {
+                    transDocs = db.collection("transactions")
+                        .whereEqualTo("userId", currentUserId)
+                        .get().get().getDocuments();
+                }
                 
                 Map<String, Double> currentSpending = new HashMap<>();
                 String monthPrefix = currentMonthYear; // yyyy-MM
                 
                 for (QueryDocumentSnapshot doc : transDocs) {
                     String tDate = doc.getString("transaction_date");
+                    if (tDate == null) tDate = doc.getString("date");
+                    if (tDate == null) tDate = doc.getString("transactionDate");
                     String type = doc.getString("type");
                     // We need 'Expense' only
                     if (tDate != null && tDate.startsWith(monthPrefix) && "Expense".equalsIgnoreCase(type)) {
                          String cat = doc.getString("category");
                          double amount = 0.0;
-                         if (doc.contains("amount")) amount = doc.getDouble("amount");
+                         Object amtObj = doc.get("amount");
+                         if (amtObj == null) amtObj = doc.get("Amount");
+                         if (amtObj instanceof Number) amount = ((Number)amtObj).doubleValue();
                          
                          if (cat != null) {
-                             currentSpending.put(cat, currentSpending.getOrDefault(cat, 0.0) + amount);
+                             String normCat = cat.trim().toLowerCase();
+                             currentSpending.put(normCat, currentSpending.getOrDefault(normCat, 0.0) + amount);
                          }
                     }
                 }
                 
                 // 3. Iterate through ALL expense categories from CategoryModel
                 for (CategoryModel category : CategoryModel.getExpenseCategories()) {
-                    String categoryName = category.getName();
-                    double target = budgetTargets.getOrDefault(categoryName, 0.0);
-                    double spent = currentSpending.getOrDefault(categoryName, 0.0);
-                    publish(createBudgetCard(categoryName, target, spent));
+                    String displayName = category.getName();
+                    String lookup = displayName.trim().toLowerCase();
+                    double target = budgetTargets.getOrDefault(lookup, 0.0);
+                    double spent = currentSpending.getOrDefault(lookup, 0.0);
+                    publish(createBudgetCard(displayName, target, spent));
                 }
                 
                 return null;
@@ -218,26 +262,34 @@ public class Budget extends javax.swing.JFrame {
 
             @Override
             protected void process(List<JPanel> chunks) {
+                if (isCancelled()) return;
                 for (JPanel card : chunks) {
                     budgetCards.add(card);
                     budgetCards.add(Box.createVerticalStrut(10));
                 }
+                budgetCards.revalidate();
+                budgetCards.repaint();
             }
 
             @Override
             protected void done() {
+                if (isCancelled()) return;
                 if (budgetCards.getComponentCount() == 0) {
                      budgetCards.add(new JLabel("No categories available. Please check CategoryModel."));
                 }
                 budgetCards.revalidate();
                 budgetCards.repaint();
+                LoadingDialog.hideLoading();
             }
         };
+        currentWorker = worker;
         worker.execute();
     }
     
     private void goToAddBudget(){
-        navigateToScreen(new AddBudget(currentUserId,currentUserName));
+        AddBudget dialog = new AddBudget(this, currentUserId, currentUserName);
+        dialog.setVisible(true);
+        loadBudgets(); // Refresh after dialog closes
     }
      
     private JPanel createBudgetCard(String category, double targetAmount, double spentAmount) {
@@ -699,9 +751,7 @@ public class Budget extends javax.swing.JFrame {
     }// </editor-fold>//GEN-END:initComponents
 
     private void addBudgetButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_addBudgetButtonActionPerformed
-       
-        goToAddBudget();
-        this.dispose();
+         goToAddBudget();
     }//GEN-LAST:event_addBudgetButtonActionPerformed
 
     private void card1targetAmountActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_card1targetAmountActionPerformed

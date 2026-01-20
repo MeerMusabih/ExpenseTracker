@@ -219,6 +219,7 @@ public class SignUp extends javax.swing.JFrame {
             return;
         }
         
+        LoadingDialog.showLoading(this, "Creating account...");
         SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() throws Exception {
@@ -265,6 +266,8 @@ public class SignUp extends javax.swing.JFrame {
                     }
                 } catch (InterruptedException ex) {
                     logger.log(java.util.logging.Level.SEVERE, "Sign up interrupted", ex);
+                } finally {
+                    LoadingDialog.hideLoading();
                 }
             }
         };

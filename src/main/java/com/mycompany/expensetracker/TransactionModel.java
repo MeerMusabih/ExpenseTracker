@@ -4,10 +4,10 @@ public class TransactionModel {
     private String id;
     private String userId;
     private double amount;
-    private String type; // "Income" or "Expense"
+    private String type; 
     private String category;
     private String description;
-    private String date; // Stored as "yyyy-MM-dd"
+    private String date; 
 
     public TransactionModel() {}
 
@@ -40,4 +40,12 @@ public class TransactionModel {
 
     public String getDate() { return date; }
     public void setDate(String date) { this.date = date; }
+
+    // Firestore documents sometimes use snake_case field names. Provide setters/getters
+    // that the Firestore mapper can use to populate the same internal fields.
+    public void setUser_id(String user_id) { this.userId = user_id; }
+    public String getUser_id() { return this.userId; }
+
+    public void setTransaction_date(String transaction_date) { this.date = transaction_date; }
+    public String getTransaction_date() { return this.date; }
 }

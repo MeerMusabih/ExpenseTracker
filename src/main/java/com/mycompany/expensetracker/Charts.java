@@ -36,6 +36,7 @@ public class Charts extends javax.swing.JFrame {
     private DefaultCategoryDataset barChartDataset;
     private DefaultPieDataset pieChartDataset;
     private TimeSeriesCollection lineChartDataset;
+    private SwingWorker<?, ?> currentWorker;
     /**
      * Creates new form Charts
      * @param userId 
@@ -132,10 +133,15 @@ public class Charts extends javax.swing.JFrame {
     private void loadChartData() {
         if (currentUserId == null || currentUserId.isEmpty()) return;
 
+        if (currentWorker != null && !currentWorker.isDone()) {
+            currentWorker.cancel(true);
+        }
+
         barChartDataset = new DefaultCategoryDataset();
         pieChartDataset = new DefaultPieDataset();
         lineChartDataset = new TimeSeriesCollection();
         
+        LoadingDialog.showLoading(this, "Loading chart data...");
         SwingWorker<List<QueryDocumentSnapshot>, Void> worker = new SwingWorker<List<QueryDocumentSnapshot>, Void>() {
             @Override
             protected List<QueryDocumentSnapshot> doInBackground() throws Exception {
@@ -148,6 +154,7 @@ public class Charts extends javax.swing.JFrame {
 
             @Override
             protected void done() {
+                if (isCancelled()) return;
                 try {
                     List<QueryDocumentSnapshot> docs = get();
                     
@@ -234,9 +241,12 @@ public class Charts extends javax.swing.JFrame {
                     
                 } catch (Exception ex) {
                     logger.log(Level.SEVERE, "Error loading charts.", ex);
+                } finally {
+                    LoadingDialog.hideLoading();
                 }
             }
         };
+        currentWorker = worker;
         worker.execute();
     }
 

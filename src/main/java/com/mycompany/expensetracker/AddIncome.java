@@ -207,6 +207,7 @@ public class AddIncome extends javax.swing.JFrame {
         // Firebase Insertion
         saveButton.setEnabled(false); // Prevent double clicks
         
+        LoadingDialog.showLoading(this, "Saving income...");
         SwingWorker<Void, Void> worker = new SwingWorker<>() {
             @Override
             protected Void doInBackground() throws Exception {
@@ -236,6 +237,7 @@ public class AddIncome extends javax.swing.JFrame {
                         JOptionPane.showMessageDialog(AddIncome.this, "Failed to record income: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE)
                     );
                 } finally {
+                    LoadingDialog.hideLoading();
                     SwingUtilities.invokeLater(() -> saveButton.setEnabled(true));
                 }
                 return null;
@@ -381,7 +383,7 @@ public class AddIncome extends javax.swing.JFrame {
         });
 
         sourceMenu.setEditable(true);
-        sourceMenu.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Salary", "Business", "Gift", "Others" }));
+        sourceMenu.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] {  }));
         sourceMenu.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 sourceMenuActionPerformed(evt);

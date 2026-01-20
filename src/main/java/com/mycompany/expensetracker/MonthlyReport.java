@@ -174,6 +174,7 @@ public class MonthlyReport extends javax.swing.JFrame {
         String startStr = startDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
         String endStr = endDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
 
+        LoadingDialog.showLoading(this, "Generating report...");
         SwingWorker<List<QueryDocumentSnapshot>, Void> worker = new SwingWorker<List<QueryDocumentSnapshot>, Void>() {
             @Override
             protected List<QueryDocumentSnapshot> doInBackground() throws Exception {
@@ -244,6 +245,8 @@ public class MonthlyReport extends javax.swing.JFrame {
                 } catch (Exception ex) {
                     logger.log(Level.SEVERE, "Error fetching monthly report data.", ex);
                     JOptionPane.showMessageDialog(MonthlyReport.this, "Error loading report: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                } finally {
+                    LoadingDialog.hideLoading();
                 }
             }
         };

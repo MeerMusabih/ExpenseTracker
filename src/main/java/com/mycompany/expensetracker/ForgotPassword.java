@@ -223,6 +223,7 @@ public class ForgotPassword extends javax.swing.JFrame {
             return;
         }
 
+        LoadingDialog.showLoading(this, "Resetting password...");
         SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() throws Exception {
@@ -262,6 +263,8 @@ public class ForgotPassword extends javax.swing.JFrame {
                      }
                 } catch (InterruptedException ex) {
                     logger.log(java.util.logging.Level.SEVERE, "Reset interrupted", ex);
+                } finally {
+                    LoadingDialog.hideLoading();
                 }
             }
         };

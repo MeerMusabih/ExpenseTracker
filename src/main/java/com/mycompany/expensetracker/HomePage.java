@@ -119,6 +119,7 @@ public class HomePage extends javax.swing.JFrame {
     private void loadDashboardData() {
         if (currentUserId == null || currentUserId.isEmpty()) return;
         
+        LoadingDialog.showLoading(this, "Loading dashboard...");
         // Run in background to avoid freezing UI
         SwingWorker<Void, Void> worker = new SwingWorker<>() {
             @Override
@@ -127,6 +128,11 @@ public class HomePage extends javax.swing.JFrame {
                 loadRecentTransactions();
                 loadCategoryChartData();
                 return null;
+            }
+
+            @Override
+            protected void done() {
+                LoadingDialog.hideLoading();
             }
         };
         worker.execute();
